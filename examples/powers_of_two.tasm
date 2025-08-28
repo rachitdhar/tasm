@@ -1,0 +1,31 @@
+//	powers_of_two.tasm
+//
+//	A slightly bigger example with
+//	more instructions.
+//
+//	NOTE: Instructions are case-insensitive.
+//
+//	The memory dump for a TASM program
+//	can be obtained by running it with the
+//	"-memdump" flag. This creates 3 files:
+//
+//	(1) __STORE_DUMP.tasm.txt
+//	(2) __DISPLAY_DUMP.tasm.txt
+//	(3) __INSTRUCTION_DUMP.tasm.txt
+//
+//	They show all the memory contents post
+//	the execution of the program.
+
+put	0x4		2
+put	0x5		1
+mov	0x186a0		0x4
+put	0x186a1		" "
+lsh	0x4		0x5
+mov	0x186a2		0x4
+put	0x186a3		" "
+lsh	0x4		0x5
+mov	0x186a4		0x4
+put	0x186a5		" "
+lsh	0x4		0x5
+mov	0x186a6		0x4
+out

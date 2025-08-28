@@ -1,0 +1,12 @@
+//	first.tasm
+//
+//	This is a very short example to depict
+//	a simple TASM program.
+//
+//	Here, we simply put the char 'A' to the
+//	memory location 0x186A0 (or 100,000) -
+//	corresponding to the start of display
+//	memory. This is then printed to stdout.
+
+put	0x186A0	 	"A"
+out

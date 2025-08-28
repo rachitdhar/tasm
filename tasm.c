@@ -1,0 +1,675 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef unsigned long DWORD;
+
+/*
+TASM TURING MACHINE & LANGUAGE IMPLEMENTATION
+*********************************************
+
+TAPE:
+    An array of units acting as a universal memory.
+    Divided into
+
+    (1) STORAGE : To store data required by the program (like variables)
+    (2) DISPLAY : To store data that can be displayed as output
+    (3) INSTRUCTION MEMORY : To store the program itself
+
+TASM INSTRUCTION SET:
+
+    put <ADDR> <DATA>         set data to addr                    (put)
+    mov <ADDR1> <ADDR2>       move data from 2 to 1               (move)
+    cmp <ADDR1> <ADDR2>       sets _ZF and _CF as per (1 - 2)     (compare)
+    jmp <ADDR>                move ptr to addr                    (jump)
+    je  <ADDR>                move ptr to addr if _ZF=1           (jump if equal)
+    jne <ADDR>                move ptr to addr if _ZF=0           (jump if not equal)
+    jg  <ADDR>                move ptr to addr if _ZF=0 && _CF=0  (jump if >)
+    jge <ADDR>                move ptr to addr if _CF=0           (jump if >=)
+    jl  <ADDR>                move ptr to addr if _CF=1           (jump if <)
+    jle <ADDR>                move ptr to addr if _ZF=1 || _CF=1  (jump if <=)
+    and <ADDR1> <ADDR2>       set (1 & 2) to 1                    (bit and)
+    or  <ADDR1> <ADDR2>       set (1 | 2) to 1                    (bit or)
+    xor <ADDR1> <ADDR2>       set (1 ^ 2) to 1                    (bit xor)
+    not <ADDR>                set ~addr to addr                   (bit not)
+    lsh <ADDR1> <ADDR2>       set (1.data << 2.data) to 1         (left shift)
+    rsh <ADDR1> <ADDR2>       set (1.data >> 2.data) to 1         (right shift)
+    add <ADDR1> <ADDR2>       set (1 + 2) to 1                    (add)
+    sub <ADDR1> <ADDR2>       set (1 - 2) to 1                    (subtract)
+    mul <ADDR1> <ADDR2>       set (1 * 2) to 1                    (multiply)
+    div <ADDR1> <ADDR2>       set (1 / 2) to 1                    (divide)
+    out                       display output                      (output)
+    hlt                       end program execution               (halt)
+*/
+
+/*
+MEMORY ADDRESSES
+****************
+
+STORAGE MEMORY (for storage of data during program execution):
+    0 (MEM) to 99999 (MEM_END)
+
+    The first 4 addresses are PRIVILEDGED REGISTERS (TEMP, ZF, CF, and DISP)
+    used internally for executing certain TASM instructions
+
+DISPLAY MEMORY (for storage of data that will be displayed after program completion):
+    100000 (OUT) to 199999 (OUT_END)
+
+INSTRUCTION MEMORY (for storing the program instructions itself):
+    200000 (MAIN) to 201023 (END)
+*/
+
+#define STORE_SIZE 100000     // program storage memory size
+#define DISPLAY_SIZE 100000   // text output capacity
+#define INIT_INSTR_SIZE 1024  // initial instruction memory size
+
+#define _MEM 0          // start of memory
+#define _MEM_END 99999  // max position of memory
+#define _OUT 100000     // start point of display
+#define _OUT_END 199999 // max position of display
+#define _MAIN 200000    // entry point of the program
+#define _END 201023     // max position for instructions
+
+#define _TEMP 0          // register : temp storage
+#define _ZF 1            // register : zero flag
+#define _CF 2            // register : carry flag
+#define _DISP 3          // register : lowest free display address
+#define _SAFE_MEM 4      // start of useable memory
+
+/*
+TURING MACHINE INSTRUCTION SET
+******************************
+*/
+
+typedef enum {
+    I_NONE, // 0x0 | do nothing (the default state)
+    I_HALT, // 0x1 | to stop the program execution
+
+    /* Standard instructions */
+    I_JUMP, // 0x2 | to move the tape pointer to the address stored at the current position
+    I_CMP,  // 0x3 |compare the values at _ptr.data and position (and set flags accordingly)
+    I_JE,   // 0x4 | to jump to the address if equal
+    I_JNE,  // 0x5 | to jump to the address if not equal
+    I_JG,   // 0x6 | to jump to the address if greater
+    I_JGE,  // 0x7 | to jump to the address if greater or equal
+    I_JL,   // 0x8 | to jump to the address if less
+    I_JLE,  // 0x9 | to jump to the address if less or equal
+    I_READ, // 0xA | read data (to _ptr) from the address stored at the current position
+    I_WRITE,// 0xB | write data (from _ptr) to the address stored at the current position
+
+    /* Bitwise instructions */
+    I_AND,    // 0xC  | bitwise AND
+    I_OR,     // 0xD  | bitwise OR
+    I_XOR,    // 0xE  | bitwise XOR
+    I_NOT,    // 0xF  | bitwise NOT
+    I_LSHIFT, // 0x10 | left shift
+    I_RSHIFT, // 0x11 | right shift
+
+    /* Arithmetic instructions */
+    I_ADD, // 0x12 | (current position data + _ptr.data) -> current position
+    I_SUB, // 0x13 | (current position data - _ptr.data) -> current position
+    I_MUL, // 0x14 | (current position data * _ptr.data) -> current position
+    I_DIV, // 0x15 | (current position data / _ptr.data) -> current position
+
+    /* I/O instructions */
+    I_OUT, // 0x16 | prints the data in display memory (upto the first NULL character)
+
+    /* Special instructions */
+    I_STEAL, // 0x17 | read instruction (to _ptr.data) from the address stored at the current position
+    I_BURN   // 0x18 | write instruction (from _ptr.data) to the address stored at the current position
+} INSTRUCTION;
+
+/*
+DATA TYPES
+**********
+*/
+
+// these data types are stored in the <ins> variable in a block
+// however they are NOT to be used in the instruction memory (since these are not valid instructions)
+
+#define T_UINT 0x20
+#define T_CHAR 0x21
+
+/*
+TAPE BLOCK
+**********
+*/
+
+typedef struct {
+    INSTRUCTION ins;
+    DWORD data; // 4 bytes of data
+} BLOCK;
+
+/*
+TAPE POINTER
+************
+*/
+
+typedef struct {
+    DWORD pos;
+    DWORD data;
+} TAPE_PTR;
+
+static TAPE_PTR _ptr;
+
+/*
+IMPLEMENTATION BEGINS HERE
+**************************
+*/
+
+static BLOCK tape[STORE_SIZE + DISPLAY_SIZE + INIT_INSTR_SIZE];
+
+// map the tasm instruction to turing machine instruction(s) and load them
+void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
+{
+    /* 0 operand instructions */
+    if (strcmp(ins, "hlt") == 0) {
+	tape[_ptr.pos].ins = I_HALT;
+	tape[_ptr.pos].data = 0;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "out") == 0) {
+	tape[_ptr.pos].ins = I_OUT;
+	tape[_ptr.pos].data = 0;
+	_ptr.pos++;
+	return;
+    }
+
+    /* 1 operand instructions */
+    if (strcmp(ins, "not") == 0) {
+	tape[_ptr.pos].ins = I_NOT;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "jmp") == 0) {
+	tape[_ptr.pos].ins = I_JUMP;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    /* 2 operand instructions */
+    if (strcmp(ins, "je") == 0) {
+	tape[_ptr.pos].ins = I_JE;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "jne") == 0) {
+	tape[_ptr.pos].ins = I_JNE;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "jg") == 0) {
+	tape[_ptr.pos].ins = I_JG;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "jge") == 0) {
+	tape[_ptr.pos].ins = I_JGE;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "jl") == 0) {
+	tape[_ptr.pos].ins = I_JL;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "jle") == 0) {
+	tape[_ptr.pos].ins = I_JLE;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "cmp") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_CMP;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "put") == 0) {
+	tape[_ptr.pos].ins = I_NONE;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_NONE;
+	tape[_ptr.pos].data = data_type;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = _ptr.pos - 2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_WRITE;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = _ptr.pos - 3;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_BURN;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "mov") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_WRITE;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_STEAL;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_BURN;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "and") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_AND;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "or") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_OR;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "xor") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_XOR;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "lsh") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_LSHIFT;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "rsh") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_RSHIFT;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "add") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_ADD;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "sub") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_SUB;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "mul") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_MUL;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+
+    if (strcmp(ins, "div") == 0) {
+	tape[_ptr.pos].ins = I_READ;
+	tape[_ptr.pos].data = a2;
+	_ptr.pos++;
+
+	tape[_ptr.pos].ins = I_DIV;
+	tape[_ptr.pos].data = a1;
+	_ptr.pos++;
+	return;
+    }
+}
+
+
+// convert char to lowercase (if between 'A' and 'Z')
+void to_lower(char *str, size_t len)
+{
+    for (int i = 0; i < len; i++) {
+	if (str[i] >= 'A' && str[i] <= 'Z') str[i] += ('a' - 'A');
+    }
+}
+
+
+// ASSEMBLER
+//
+// read, parse, and load the tasm program into instruction memory
+void assemble_tasm(const char *tasm_file_name)
+{
+    FILE *tasm_file = fopen(tasm_file_name, "r");
+    if (!tasm_file) {
+	fprintf(stderr, "ERROR: .tasm file not found");
+	exit(1);
+    }
+
+    _ptr.pos = _MAIN;
+    char line[256];
+
+    // load line by line
+    while (fgets(line, sizeof(line), tasm_file) != NULL) {
+	char *comment_start = strstr(line, "//");
+	if (comment_start != NULL) {
+            *comment_start = '\0';  // terminate string at the start of the comment
+	}
+
+	char ins[4];
+	unsigned int first;
+	char second[200];
+
+	sscanf(line, "%4s %x %[^\n]", ins, &first, &second);
+	DWORD a1 = (DWORD)first;
+	DWORD a2, data_type;
+
+	to_lower(ins, 4);
+        size_t len = strlen(second);
+
+	if (second[0] == '"') { // for char / string data
+            if (len > 1 && second[len - 1] == '"') second[len - 1] = '\0';
+
+	    for (int i = 1; i < len - 1; i++) {
+		a2 = (DWORD)(second[i]);
+		data_type = T_CHAR;
+
+		load_instruction(ins, a1, a2, data_type);
+		a1++;
+	    }
+	    continue;
+	} else if (len > 0) { // for unsigned int data (hex / oct / dec)
+            a2 = strtoul(second, NULL, 0);
+	    data_type = T_UINT;
+	}
+
+	load_instruction(ins, a1, a2, data_type);
+    }
+    // add halt at the end for safety
+    tape[_ptr.pos].ins = I_HALT;
+    tape[_ptr.pos].data = 0;
+
+    // reset the pointer position
+    _ptr.pos = _MAIN;
+
+    fclose(tasm_file);
+}
+
+// output display text
+void output()
+{
+    DWORD final_addr = _ptr.pos + 1;
+    _ptr.pos = _OUT;
+    int is_escaped = 0;
+
+    while (_ptr.pos < _OUT_END && _ptr.pos < tape[_DISP].data) {
+	// handle escape sequences
+	if (is_escaped) {
+	    if (tape[_ptr.pos].data == (DWORD)'n') putchar('\n');
+	    else if (tape[_ptr.pos].data == (DWORD)'r') putchar('\r');
+
+	    is_escaped = 0;
+	    _ptr.pos++;
+	    continue;
+	}
+
+	if (tape[_ptr.pos].ins == T_UINT) printf("%lu", tape[_ptr.pos].data);
+	else if (tape[_ptr.pos].ins == T_CHAR) {
+	    if (tape[_ptr.pos].data == (DWORD)'\\') {
+		is_escaped = 1;
+		_ptr.pos++;
+		continue;
+	    }
+	    putchar((char) (tape[_ptr.pos].data & 0xFF));
+	}
+	is_escaped = 0;
+	_ptr.pos++;
+    }
+    _ptr.pos = final_addr;
+}
+
+// run the program on the turing machine (tape)
+// (contains all instruction implementations)
+void run()
+{
+    _ptr.pos = _MAIN; // entry point
+    int is_halted = 0;
+
+    while (!is_halted)
+    {
+	DWORD addr = tape[_ptr.pos].data;
+
+	// execute the instruction
+	switch (tape[_ptr.pos].ins) {
+	case I_NONE:
+	    _ptr.pos++;
+	    break;
+	case I_HALT:
+	    is_halted = 1;
+	    break;
+	case I_JUMP:
+	    _ptr.pos = addr;
+	    break;
+	case I_CMP:
+	    tape[_ZF].data = tape[addr].data == _ptr.data;
+	    tape[_CF].data = tape[addr].data < _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_JE:
+	    _ptr.pos = tape[_ZF].data == 1 ? addr : _ptr.pos + 1;
+	    break;
+	case I_JNE:
+	    _ptr.pos = tape[_ZF].data == 0 ? addr : _ptr.pos + 1;
+	    break;
+	case I_JG:
+	    _ptr.pos = (tape[_ZF].data == 0 && tape[_CF].data == 0) ? addr : _ptr.pos + 1;
+	    break;
+	case I_JGE:
+	    _ptr.pos = tape[_CF].data == 0 ? addr : _ptr.pos + 1;
+	    break;
+	case I_JL:
+	    _ptr.pos = tape[_CF].data == 1 ? addr : _ptr.pos + 1;
+	    break;
+	case I_JLE:
+	    _ptr.pos = (tape[_ZF].data == 1 || tape[_CF].data == 1) ? addr : _ptr.pos + 1;
+	    break;
+	case I_READ:
+	    _ptr.data = tape[addr].data;
+	    _ptr.pos++;
+	    break;
+	case I_WRITE:
+	    tape[addr].data = _ptr.data;
+	    if (addr >= tape[_DISP].data) tape[_DISP].data = addr + 1;
+	    _ptr.pos++;
+	    break;
+	case I_AND:
+	    tape[addr].data &= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_OR:
+	    tape[addr].data |= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_XOR:
+	    tape[addr].data ^= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_NOT:
+	    tape[addr].data = !tape[addr].data;
+	    _ptr.pos++;
+	    break;
+	case I_LSHIFT:
+	    tape[addr].data <<= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_RSHIFT:
+	    tape[addr].data >>= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_ADD:
+	    tape[addr].data += _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_SUB:
+	    tape[addr].data -= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_MUL:
+	    tape[addr].data *= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_DIV:
+	    tape[addr].data /= _ptr.data;
+	    _ptr.pos++;
+	    break;
+	case I_OUT:
+	    output();
+	    break;
+	case I_STEAL:
+	    _ptr.data = tape[addr].ins;
+	    _ptr.pos++;
+	    break;
+	case I_BURN:
+	    tape[addr].ins = _ptr.data;
+	    _ptr.pos++;
+	    break;
+	default:
+	    fprintf(stderr, "RUNTIME ERROR: Invalid instruction :: %u", tape[_ptr.pos].ins);
+	    exit(1);
+	}
+    }
+}
+
+// create three files displaying the entire memory contents
+void generate_memory_dump()
+{
+    // write store file
+    FILE *store_file = fopen("__STORE_DUMP.tasm.txt", "w");
+    if (store_file == NULL) {
+	fprintf(stderr, "ERROR: Failed to create store dump file");
+	exit(1);
+    }
+
+    // write line by line from store memory
+    for (DWORD i = _MEM; i <= _MEM_END; i++) {
+	fprintf(store_file, "0x%08lx [_MEM + %010lu] \t0x%08lx  0x%08lx\n", i, i - _MEM, tape[i].ins, tape[i].data);
+    }
+    fclose(store_file);
+
+    // write display file
+    FILE *display_file = fopen("__DISPLAY_DUMP.tasm.txt", "w");
+    if (store_file == NULL) {
+	fprintf(stderr, "ERROR: Failed to create display dump file");
+	exit(1);
+    }
+
+    // write line by line from display memory
+    for (DWORD i = _OUT; i <= _OUT_END; i++) {
+	fprintf(display_file, "0x%08lx [_OUT + %010lu] \t0x%08lx  0x%08lx\n", i, i - _OUT, tape[i].ins, tape[i].data);
+    }
+    fclose(display_file);
+
+    // write instruction file
+    FILE *ins_file = fopen("__INSTRUCTION_DUMP.tasm.txt", "w");
+    if (ins_file == NULL) {
+	fprintf(stderr, "ERROR: Failed to create instruction dump file");
+	exit(1);
+    }
+
+    // write line by line from instruction memory
+    for (DWORD i = _MAIN; i <= _END; i++) {
+	fprintf(ins_file, "0x%08lx [_MAIN + %010lu] \t0x%08lx  0x%08lx\n", i, i - _MAIN, tape[i].ins, tape[i].data);
+    }
+    fclose(ins_file);
+}
+
+// check the extension of a file (ext is to be passed without a dot)
+int has_extension(const char *file_name, const char *ext) {
+    const char *dot = strrchr(file_name, '.');
+    if (!dot || dot == file_name) return 0;
+    return strcmp(dot + 1, ext) == 0;
+}
+
+void main(int argc, char** argv)
+{
+    if (argc < 2 || !has_extension(argv[1], "tasm")) {
+	fprintf(stderr, "ERROR: Provide the .tasm file name in the argument");
+	exit(1);
+    }
+
+    // flag for memory dump files to be generated after execution in complete
+    int memdump = (argc > 2 && strcmp(argv[2], "-memdump") == 0);
+
+    assemble_tasm(argv[1]);
+    run();
+
+    if (memdump) generate_memory_dump();
+}
