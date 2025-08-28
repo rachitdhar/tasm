@@ -33,7 +33,7 @@ tasm <FILE_NAME> -memdump
 ```
 
 This can sometimes be helpful for debugging purposes. To see how the dump files look, you
-can go look at examples/memdump__powers_of_two/
+can go look at [memdump__powers_of_two][./examples/memdump__powers_of_two]
 
 ## The Language (TASM)
 
