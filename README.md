@@ -1,21 +1,21 @@
-# tasm
+# TASM (Turing Assembly)
 
-Turing Assembler (TASM): An assembly language that runs on an in-built virtual Turing-like Machine.
+Turing Assembly (TASM): An assembly language that runs on an in-built virtual Turing-like Machine.
 
 The idea of this project originated with the notion of a Turing Machine as a model for a universal
 computer. I was curious about the simplicity of implementing a TM, which in its traditional sense
 is only an array ("tape") that contains symbols, along with a pointer head that can read and write
 to the cells and move around. My implementation deviates from this basic model in two main ways:
 
-(1) The tape is an array of structs, each with an instruction and data variable.
-(2) The set of instructions has been extended beyond what is considered the "bare minimum" theoretically needed, for the sake of practicality.
-(3) The tape pointer by default just moves towards the right. 
+- The tape is an array of structs, each with an instruction and data variable.
+- The set of instructions has been extended beyond what is considered the "bare minimum" theoretically needed, for the sake of practicality.
+- The tape pointer by default just moves towards the right. 
 
 Furthermore, the tape is divided into 3 regions of memory for their respective functions:
 
-(1) STORAGE
-(2) DISPLAY
-(3) INSTRUCTIONS
+- STORAGE
+- DISPLAY
+- INSTRUCTIONS
 
 ## The Language (TASM)
 
