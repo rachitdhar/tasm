@@ -30,8 +30,12 @@ is set to run.
 
 ```
 <INSTRUCTION>	<DESTINATION_ADDRESS>	<SOURCE_ADDRESS> | <VALUE>
+```
 
-Ex:   	put			0x4		"Hello World!\n"
+For example:
+
+```asm
+put		0x4 	"Hello World!\n"
 ```
 
 ## Instruction Set
