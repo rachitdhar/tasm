@@ -66,3 +66,17 @@ The instruction set is given below. It is relatively similar to most standard as
     	out                       display output                      (output)
     	hlt                       end program execution               (halt)
 ```
+
+## Special Memory Addresses
+
+The following memory addresses are unique (the values are defined in tasm.c):
+
+- _MEM / _TEMP
+- _ZF
+- _CF
+- _DISP
+- _MEM_END
+- _OUT
+- _OUT_END
+- _MAIN
+- _END
