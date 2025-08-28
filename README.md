@@ -17,6 +17,24 @@ Furthermore, the tape is divided into 3 regions of memory for their respective f
 - DISPLAY
 - INSTRUCTIONS
 
+## Usage
+
+To assemble (and run) a .tasm program file:
+
+```
+tasm <FILE_NAME>
+```
+
+If you want to also retrieve the memory contents of the file after it has been executed,
+you can run it with the "-memdump" flag:
+
+```
+tasm <FILE_NAME> -memdump
+```
+
+This can sometimes be helpful for debugging purposes. To see how the dump files look, you
+can go look at examples/memdump__powers_of_two/
+
 ## The Language (TASM)
 
 I have created a simple assembly language called TASM, that can be loaded onto the tape, and run.
