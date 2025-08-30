@@ -62,7 +62,7 @@ put		0x4 	"Hello World!\n"
 The instruction set is given below. It is relatively similar to most standard assembly instructions.
 
 ```
-put <ADDR> <DATA>         set data to addr                    (put)
+	put <ADDR> <DATA>         set data to addr                    (put)
     mov <ADDR1> <ADDR2>       move data from 2 to 1               (move)
     cmp <ADDR1> <ADDR2>       sets _ZF and _CF as per (1 - 2)     (compare)
     jmp <ADDR>                move ptr to addr                    (jump)
