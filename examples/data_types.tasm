@@ -12,6 +12,7 @@
 //	The '\' is used as an escape character.
 //	\n and \r are defined currently.
 
-put	0x186a0		"hello world\n"
-put	0x186ad		15
-out
+main:
+	put	0x18a88		"hello world\n"
+	put	0x18a95		15
+	out

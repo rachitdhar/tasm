@@ -4,9 +4,17 @@
 //	a simple TASM program.
 //
 //	Here, we simply put the char 'A' to the
-//	memory location 0x186A0 (or 100,000) -
+//	memory location 0x18A88 (or 101,000) -
 //	corresponding to the start of display
 //	memory. This is then printed to stdout.
+//
+//	Every instruction block must have a label
+//	within which it is contained.
+//
+//	The "main" label is a required label for
+//	a tasm program, as it specifies the
+//	entry point.
 
-put	0x186A0	 	"A"
-out
+main:
+	put	0x18A88	 	"A"
+	out
