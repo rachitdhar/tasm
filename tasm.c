@@ -68,7 +68,7 @@ MEMORY ADDRESSES
 STORAGE MEMORY (for storage of data during program execution):
     0 (MEM) to 99999 (MEM_END)
 
-    The first 4 addresses are PRIVILEDGED REGISTERS (TEMP, ZF, CF, and DISP)
+    The first 5 addresses are PRIVILEDGED REGISTERS (TEMP, ZF, CF, DISP, and STK)
     used internally for executing certain TASM instructions
 
 STACK MEMORY (to store the call stack of the program):
