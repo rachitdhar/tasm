@@ -191,8 +191,8 @@ typedef enum {
     /* Bitwise instructions */
     I_AND,    // 0xE  | bitwise AND
     I_OR,     // 0xF  | bitwise OR
-    I_XOR,    // 0x10  | bitwise XOR
-    I_NOT,    // 0x11  | bitwise NOT
+    I_XOR,    // 0x10 | bitwise XOR
+    I_NOT,    // 0x11 | bitwise NOT
     I_LSHIFT, // 0x12 | left shift
     I_RSHIFT, // 0x13 | right shift
 
@@ -250,8 +250,24 @@ IMPLEMENTATION BEGINS HERE
 
 static BLOCK tape[STORE_SIZE + STACK_SIZE + DISPLAY_SIZE + INSTR_SIZE];
 
+// to load instructions that read the value stored at an address, and pass it into the upcoming instruction
+// (overwrite_at: the number of steps ahead to overwrite at)
+void load_deref_instructions(DWORD addr, int overwrite_at)
+{
+    tape[_ptr.pos].ins = I_READ;
+    tape[_ptr.pos].data = addr;
+    _ptr.pos++;
+
+    tape[_ptr.pos].ins = I_WRITE;
+    tape[_ptr.pos].data = _ptr.pos + overwrite_at; // to overwrite the next position
+    _ptr.pos++;
+}
+
 // map the tasm instruction to turing machine instruction(s) and load them
-void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
+//
+// if deref_1 is 1, then instructions will be added before each instruction containing a1, to overwrite it
+// with the dereferenced address. the same goes for deref_2.
+void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type, int deref_1, int deref_2)
 {
     /* 0 operand instructions */
     if (strcmp(ins, "hlt") == 0) {
@@ -277,6 +293,8 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
 
     /* 1 operand instructions */
     if (strcmp(ins, "not") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_NOT;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
@@ -284,6 +302,8 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "jmp") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_JUMP;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
@@ -291,14 +311,17 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "call") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_CALL;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
 	return;
     }
 
-    /* 2 operand instructions */
     if (strcmp(ins, "je") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_JE;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
@@ -306,6 +329,8 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "jne") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_JNE;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
@@ -313,6 +338,8 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "jg") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_JG;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
@@ -320,6 +347,8 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "jge") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_JGE;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
@@ -327,6 +356,8 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "jl") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_JL;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
@@ -334,13 +365,19 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "jle") == 0) {
+	if (deref_1) load_deref_instructions(a1, 1);
+
 	tape[_ptr.pos].ins = I_JLE;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
 	return;
     }
 
+    /* 2 operand instructions */
     if (strcmp(ins, "cmp") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -352,6 +389,12 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "put") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 5 : 1);
+	if (deref_1) {
+	    load_deref_instructions(a1, 6);
+	    load_deref_instructions(a1, 6);
+	}
+
 	tape[_ptr.pos].ins = I_NONE;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -379,6 +422,15 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "mov") == 0) {
+	if (deref_2) {
+	    load_deref_instructions(a2, deref_1 ? 7 : 3);
+	    load_deref_instructions(a2, deref_1 ? 7 : 3);
+	}
+	if (deref_1) {
+	    load_deref_instructions(a1, 4);
+	    load_deref_instructions(a1, 4);
+	}
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -398,6 +450,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "and") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -409,6 +464,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "or") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -420,6 +478,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "xor") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -431,6 +492,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "lsh") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -442,6 +506,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "rsh") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -453,6 +520,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "add") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -464,6 +534,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "sub") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -476,6 +549,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "mul") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -487,6 +563,9 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type)
     }
 
     if (strcmp(ins, "div") == 0) {
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
+
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
@@ -556,10 +635,21 @@ void assemble_tasm(const char *tasm_file_name)
 	}
 
 	DWORD a1, a2, data_type;
+	int deref_1 = 0, deref_2 = 0;
+	size_t first_len = strlen(first);
 
 	if (first[0] == '0' && first[1] == 'x') {
 	    a1 = strtoul(first, NULL, 16);
-	} else if (strlen(first) > 0) {
+	} else if (first[0] == '[' && first[1] == '0' && first[2] == 'x' && first[first_len - 1] == ']') {
+	    // mark the first address for dereferencing
+	    deref_1 = 1;
+
+	    char *addr_contained = malloc(first_len - 1);
+	    strncpy(addr_contained, first + 1, first_len - 2); // get the number without the square brackets
+	    addr_contained[first_len - 2] = '\0';
+
+	    a1 = strtoul(addr_contained, NULL, 16);
+	} else if (first_len > 0) {
 	    // label handling (for the case of "call" instruction)
 	    DWORD *retrieved_addr = map_get(label_to_address_map, first);
 	    if (retrieved_addr == NULL) {
@@ -579,16 +669,25 @@ void assemble_tasm(const char *tasm_file_name)
 		a2 = (DWORD)(second[i]);
 		data_type = T_CHAR;
 
-		load_instruction(ins, a1, a2, data_type);
+		load_instruction(ins, a1, a2, data_type, deref_1, deref_2);
 		a1++;
 	    }
 	    continue;
+	} else if (second[0] == '[' && second[len - 1] == ']') { // for unsigned int address enclosed in []
+	    // mark the second address for dereferencing
+	    deref_2 = 1;
+
+	    char *addr_contained = malloc(len - 1);
+	    strncpy(addr_contained, second + 1, len - 2); // get the number without the square brackets
+	    addr_contained[len - 2] = '\0';
+
+	    a2 = strtoul(addr_contained, NULL, 0);
 	} else if (len > 0) { // for unsigned int data (hex / oct / dec)
             a2 = strtoul(second, NULL, 0);
 	    data_type = T_UINT;
 	}
 
-	load_instruction(ins, a1, a2, data_type);
+	load_instruction(ins, a1, a2, data_type, deref_1, deref_2);
     }
     // add halt at the end for safety
     tape[_ptr.pos].ins = I_HALT;
