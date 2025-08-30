@@ -98,6 +98,8 @@ The following memory addresses are unique (the values are defined in tasm.c):
 - _DISP
 - _STK
 - _MEM_END
+- _STACK_END
+- _STACK
 - _OUT
 - _OUT_END
 - _MAIN
