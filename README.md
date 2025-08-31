@@ -1,6 +1,6 @@
 # TASM (Turing Assembly)
 
-<img width="2245" height="1587" alt="TASM Turing Machine" src="https://github.com/user-attachments/assets/e506a320-a27b-4881-94c9-432d21f44ca1" />
+<img width="2245" height="797" alt="TASM Turing Machine" src="https://github.com/user-attachments/assets/1cdbe1c8-2555-4457-a277-485b4eb6e42a" />
 
 Turing Assembly (TASM): An assembly language that runs on an in-built virtual Turing-like Machine.
 
