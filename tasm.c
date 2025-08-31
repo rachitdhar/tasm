@@ -177,7 +177,7 @@ typedef enum {
 
     /* Standard instructions */
     I_JUMP, // 0x2 | to move the tape pointer to the address stored at the current position
-    I_CMP,  // 0x3 |compare the values at _ptr.data and position (and set flags accordingly)
+    I_CMP,  // 0x3 | compare the values at _ptr.data and position (and set flags accordingly)
     I_JE,   // 0x4 | to jump to the address if equal
     I_JNE,  // 0x5 | to jump to the address if not equal
     I_JG,   // 0x6 | to jump to the address if greater

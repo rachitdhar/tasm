@@ -54,7 +54,7 @@ is set to run.
 For example:
 
 ```asm
-put		0x4 	"Hello World!\n"
+put		0x5 	"Hello World!\n"
 ```
 
 ## Instruction Set
