@@ -1,0 +1,28 @@
+//	improved_powers_of_two.tasm
+//
+//	Improving upon the powers_of_two
+//	code, by making use of dereferencing
+//	to access an address, and increment
+//	the value of that address each time
+//
+//	Here, we are using the address 0x7
+//	as a pointer to the current display
+//	address.
+
+print_and_double:
+	mov	[0x7]		0x5
+	add	0x7		0x6		// increment the display pointer
+	put	[0x7]		" "
+	add	0x7		0x6		// increment the display pointer
+	lsh	0x5		0x6
+	ret
+
+main:
+	put	0x5		2
+	put	0x6		1
+	put	0x7		0x18a88		// storing the display address
+	call	print_and_double
+	call	print_and_double
+	call	print_and_double
+	call	print_and_double
+	out

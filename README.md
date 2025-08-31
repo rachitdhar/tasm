@@ -9,11 +9,12 @@ to the cells and move around. My implementation deviates from this basic model i
 
 - The tape is an array of structs, each with an instruction and data variable.
 - The set of instructions has been extended beyond what is considered the "bare minimum" theoretically needed, for the sake of practicality.
-- The tape pointer by default just moves towards the right. 
+- The tape pointer by default just moves towards the right.
 
-Furthermore, the tape is divided into 3 regions of memory for their respective functions:
+Furthermore, the tape is divided into 4 regions of memory for their respective functions:
 
 - STORAGE
+- STACK
 - DISPLAY
 - INSTRUCTIONS
 
@@ -61,28 +62,30 @@ put		0x4 	"Hello World!\n"
 The instruction set is given below. It is relatively similar to most standard assembly instructions.
 
 ```
-	    put <ADDR> <DATA>         set data to addr                    (put)
-    	mov <ADDR1> <ADDR2>       move data from 2 to 1               (move)
-    	cmp <ADDR1> <ADDR2>       sets _ZF and _CF as per (1 - 2)     (compare)
-    	jmp <ADDR>                move ptr to addr                    (jump)
-    	je  <ADDR>                move ptr to addr if _ZF=1           (jump if equal)
-    	jne <ADDR>                move ptr to addr if _ZF=0           (jump if not equal)
-    	jg  <ADDR>                move ptr to addr if _ZF=0 && _CF=0  (jump if >)
-    	jge <ADDR>                move ptr to addr if _CF=0           (jump if >=)
-    	jl  <ADDR>                move ptr to addr if _CF=1           (jump if <)
-    	jle <ADDR>                move ptr to addr if _ZF=1 || _CF=1  (jump if <=)
-    	and <ADDR1> <ADDR2>       set (1 & 2) to 1                    (bit and)
-    	or  <ADDR1> <ADDR2>       set (1 | 2) to 1                    (bit or)
-    	xor <ADDR1> <ADDR2>       set (1 ^ 2) to 1                    (bit xor)
-    	not <ADDR>                set ~addr to addr                   (bit not)
-    	lsh <ADDR1> <ADDR2>       set (1.data << 2.data) to 1         (left shift)
-    	rsh <ADDR1> <ADDR2>       set (1.data >> 2.data) to 1         (right shift)
-    	add <ADDR1> <ADDR2>       set (1 + 2) to 1                    (add)
-    	sub <ADDR1> <ADDR2>       set (1 - 2) to 1                    (subtract)
-    	mul <ADDR1> <ADDR2>       set (1 * 2) to 1                    (multiply)
-    	div <ADDR1> <ADDR2>       set (1 / 2) to 1                    (divide)
-    	out                       display output                      (output)
-    	hlt                       end program execution               (halt)
+	put <ADDR> <DATA>         set data to addr                    (put)
+    mov <ADDR1> <ADDR2>       move data from 2 to 1               (move)
+    cmp <ADDR1> <ADDR2>       sets _ZF and _CF as per (1 - 2)     (compare)
+    jmp <ADDR>                move ptr to addr                    (jump)
+    je  <ADDR>                move ptr to addr if _ZF=1           (jump if equal)
+    jne <ADDR>                move ptr to addr if _ZF=0           (jump if not equal)
+    jg  <ADDR>                move ptr to addr if _ZF=0 && _CF=0  (jump if >)
+    jge <ADDR>                move ptr to addr if _CF=0           (jump if >=)
+    jl  <ADDR>                move ptr to addr if _CF=1           (jump if <)
+    jle <ADDR>                move ptr to addr if _ZF=1 || _CF=1  (jump if <=)
+    call <ADDR>               add to stack, and go to address     (call)
+    and <ADDR1> <ADDR2>       set (1 & 2) to 1                    (bit and)
+    or  <ADDR1> <ADDR2>       set (1 | 2) to 1                    (bit or)
+    xor <ADDR1> <ADDR2>       set (1 ^ 2) to 1                    (bit xor)
+    not <ADDR>                set ~addr to addr                   (bit not)
+    lsh <ADDR1> <ADDR2>       set (1.data << 2.data) to 1         (left shift)
+    rsh <ADDR1> <ADDR2>       set (1.data >> 2.data) to 1         (right shift)
+    add <ADDR1> <ADDR2>       set (1 + 2) to 1                    (add)
+    sub <ADDR1> <ADDR2>       set (1 - 2) to 1                    (subtract)
+    mul <ADDR1> <ADDR2>       set (1 * 2) to 1                    (multiply)
+    div <ADDR1> <ADDR2>       set (1 / 2) to 1                    (divide)
+    ret                       move ptr to address in stack top    (return)
+    out                       display output                      (output)
+    hlt                       end program execution               (halt)
 ```
 
 ## Special Memory Addresses
@@ -93,7 +96,10 @@ The following memory addresses are unique (the values are defined in tasm.c):
 - _ZF
 - _CF
 - _DISP
+- _STK
 - _MEM_END
+- _STACK_END
+- _STACK
 - _OUT
 - _OUT_END
 - _MAIN
