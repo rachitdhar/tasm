@@ -19,6 +19,7 @@
 #include <string.h>
 
 typedef unsigned long DWORD;
+typedef unsigned char BYTE;
 
 /*
 TASM TURING MACHINE & LANGUAGE IMPLEMENTATION
@@ -204,22 +205,32 @@ typedef enum {
 
     /* I/O instructions */
     I_OUT, // 0x18 | prints the data in display memory (upto the first NULL character)
-
-    /* Special instructions */
-    I_STEAL, // 0x19 | read instruction (to _ptr.data) from the address stored at the current position
-    I_BURN   // 0x1A | write instruction (from _ptr.data) to the address stored at the current position
 } INSTRUCTION;
 
 /*
 DATA TYPES
 **********
+
+In this architecture, we are defining 2 kinds of types:
+
+    T_UINT (Unsigned Integer)
+    T_CHAR (Character)
+
+We shall control the type simply by using a dtype variable in the BLOCK:
+
+    0 --> T_UINT
+    1 --> T_CHAR
+
+(NOTE FOR CONTEXT: In TASM v1, we used actual data types in the instructions
+which were put and moved around with the help of the I_STEAL and I_BURN
+instructions. This, however, turns out to be a very bad idea, because
+such instructions literally alter the instructions at runtime, which became
+obvious when the fib.tasm example program I wrote failed at runtime due
+to the T_UINT and T_CHAR instructions being written into the instruction
+memory, despite being non-instructions. Even in general, something that
+is fundamentally not an instruction [like T_UINT and T_CHAR] shouldn't
+be stored into instruction variables)
 */
-
-// these data types are stored in the <ins> variable in a block
-// however they are NOT to be used in the instruction memory (since these are not valid instructions)
-
-#define T_UINT 0x20
-#define T_CHAR 0x21
 
 /*
 TAPE BLOCK
@@ -229,6 +240,7 @@ TAPE BLOCK
 typedef struct {
     INSTRUCTION ins;
     DWORD data; // 4 bytes of data
+    BYTE dtype;
 } BLOCK;
 
 /*
@@ -239,6 +251,7 @@ TAPE POINTER
 typedef struct {
     DWORD pos;
     DWORD data;
+    BYTE dtype;
 } TAPE_PTR;
 
 static TAPE_PTR _ptr;
@@ -249,6 +262,7 @@ IMPLEMENTATION BEGINS HERE
 */
 
 static BLOCK tape[STORE_SIZE + STACK_SIZE + DISPLAY_SIZE + INSTR_SIZE];
+int memdump = 0; // whether to generate memory dump files after execution is complete
 
 // to load instructions that read the value stored at an address, and pass it into the upcoming instruction
 // (overwrite_at: the number of steps ahead to overwrite at)
@@ -267,7 +281,7 @@ void load_deref_instructions(DWORD addr, int overwrite_at)
 //
 // if deref_1 is 1, then instructions will be added before each instruction containing a1, to overwrite it
 // with the dereferenced address. the same goes for deref_2.
-void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type, int deref_1, int deref_2)
+void load_instruction(const char *ins, DWORD a1, DWORD a2, BYTE data_type, int deref_1, int deref_2)
 {
     /* 0 operand instructions */
     if (strcmp(ins, "hlt") == 0) {
@@ -389,61 +403,33 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type, int 
     }
 
     if (strcmp(ins, "put") == 0) {
-	if (deref_2) load_deref_instructions(a2, deref_1 ? 5 : 1);
-	if (deref_1) {
-	    load_deref_instructions(a1, 6);
-	    load_deref_instructions(a1, 6);
-	}
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 3);
 
 	tape[_ptr.pos].ins = I_NONE;
 	tape[_ptr.pos].data = a2;
-	_ptr.pos++;
-
-	tape[_ptr.pos].ins = I_NONE;
-	tape[_ptr.pos].data = data_type;
+	tape[_ptr.pos].dtype = data_type;
 	_ptr.pos++;
 
 	tape[_ptr.pos].ins = I_READ;
-	tape[_ptr.pos].data = _ptr.pos - 2;
+	tape[_ptr.pos].data = _ptr.pos - 1;
 	_ptr.pos++;
 
 	tape[_ptr.pos].ins = I_WRITE;
-	tape[_ptr.pos].data = a1;
-	_ptr.pos++;
-
-	tape[_ptr.pos].ins = I_READ;
-	tape[_ptr.pos].data = _ptr.pos - 3;
-	_ptr.pos++;
-
-	tape[_ptr.pos].ins = I_BURN;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
 	return;
     }
 
     if (strcmp(ins, "mov") == 0) {
-	if (deref_2) {
-	    load_deref_instructions(a2, deref_1 ? 7 : 3);
-	    load_deref_instructions(a2, deref_1 ? 7 : 3);
-	}
-	if (deref_1) {
-	    load_deref_instructions(a1, 4);
-	    load_deref_instructions(a1, 4);
-	}
+	if (deref_2) load_deref_instructions(a2, deref_1 ? 3 : 1);
+	if (deref_1) load_deref_instructions(a1, 2);
 
 	tape[_ptr.pos].ins = I_READ;
 	tape[_ptr.pos].data = a2;
 	_ptr.pos++;
 
 	tape[_ptr.pos].ins = I_WRITE;
-	tape[_ptr.pos].data = a1;
-	_ptr.pos++;
-
-	tape[_ptr.pos].ins = I_STEAL;
-	tape[_ptr.pos].data = a2;
-	_ptr.pos++;
-
-	tape[_ptr.pos].ins = I_BURN;
 	tape[_ptr.pos].data = a1;
 	_ptr.pos++;
 	return;
@@ -577,6 +563,49 @@ void load_instruction(const char *ins, DWORD a1, DWORD a2, DWORD data_type, int 
     }
 }
 
+// create three files displaying the entire memory contents
+void generate_memory_dump()
+{
+    // write store file
+    FILE *store_file = fopen("__STORE_DUMP.tasm.txt", "w");
+    if (store_file == NULL) {
+	fprintf(stderr, "ERROR: Failed to create store dump file");
+	exit(1);
+    }
+
+    // write line by line from store memory
+    for (DWORD i = _MEM; i <= _MEM_END; i++) {
+	fprintf(store_file, "0x%08lx [_MEM + %010lu] \t0x%08lx  0x%08lx  %u\n", i, i - _MEM, tape[i].ins, tape[i].data, tape[i].dtype);
+    }
+    fclose(store_file);
+
+    // write display file
+    FILE *display_file = fopen("__DISPLAY_DUMP.tasm.txt", "w");
+    if (store_file == NULL) {
+	fprintf(stderr, "ERROR: Failed to create display dump file");
+	exit(1);
+    }
+
+    // write line by line from display memory
+    for (DWORD i = _OUT; i <= _OUT_END; i++) {
+	fprintf(display_file, "0x%08lx [_OUT + %010lu] \t0x%08lx  0x%08lx  %u\n", i, i - _OUT, tape[i].ins, tape[i].data, tape[i].dtype);
+    }
+    fclose(display_file);
+
+    // write instruction file
+    FILE *ins_file = fopen("__INSTRUCTION_DUMP.tasm.txt", "w");
+    if (ins_file == NULL) {
+	fprintf(stderr, "ERROR: Failed to create instruction dump file");
+	exit(1);
+    }
+
+    // write line by line from instruction memory
+    for (DWORD i = _MAIN; i <= _END; i++) {
+	fprintf(ins_file, "0x%08lx [_MAIN + %010lu] \t0x%08lx  0x%08lx  %u\n", i, i - _MAIN, tape[i].ins, tape[i].data, tape[i].dtype);
+    }
+    fclose(ins_file);
+}
+
 
 // ASSEMBLER
 //
@@ -616,6 +645,7 @@ void assemble_tasm(const char *tasm_file_name)
 	// check for instruction memory overflow
 	if (_ptr.pos > _END) {
 	    fprintf(stderr, "ERROR: Memory overflow occurred [Line %d]. Instruction memory limit exceeded.", line_num);
+	    if (memdump) generate_memory_dump();
 	    exit(1);
 	}
 
@@ -634,7 +664,8 @@ void assemble_tasm(const char *tasm_file_name)
 	    continue;
 	}
 
-	DWORD a1, a2, data_type;
+	DWORD a1, a2;
+	BYTE data_type = 0;
 	int deref_1 = 0, deref_2 = 0;
 	size_t first_len = strlen(first);
 
@@ -667,7 +698,7 @@ void assemble_tasm(const char *tasm_file_name)
 
 	    for (int i = 1; i < len - 1; i++) {
 		a2 = (DWORD)(second[i]);
-		data_type = T_CHAR;
+		data_type = 1;
 
 		load_instruction(ins, a1, a2, data_type, deref_1, deref_2);
 		a1++;
@@ -684,7 +715,6 @@ void assemble_tasm(const char *tasm_file_name)
 	    a2 = strtoul(addr_contained, NULL, 0);
 	} else if (len > 0) { // for unsigned int data (hex / oct / dec)
             a2 = strtoul(second, NULL, 0);
-	    data_type = T_UINT;
 	}
 
 	load_instruction(ins, a1, a2, data_type, deref_1, deref_2);
@@ -716,25 +746,28 @@ void output()
     int is_escaped = 0;
 
     while (_ptr.pos < _OUT_END && _ptr.pos < tape[_DISP].data) {
+	DWORD val = tape[_ptr.pos].data;
+
 	// handle escape sequences
 	if (is_escaped) {
-	    if (tape[_ptr.pos].data == (DWORD)'n') putchar('\n');
-	    else if (tape[_ptr.pos].data == (DWORD)'r') putchar('\r');
+	    if (val == (DWORD)'n') putchar('\n');
+	    else if (val == (DWORD)'r') putchar('\r');
 
 	    is_escaped = 0;
 	    _ptr.pos++;
 	    continue;
 	}
 
-	if (tape[_ptr.pos].ins == T_UINT) printf("%lu", tape[_ptr.pos].data);
-	else if (tape[_ptr.pos].ins == T_CHAR) {
-	    if (tape[_ptr.pos].data == (DWORD)'\\') {
+	// if dtype is 1, treat like a char
+	if (tape[_ptr.pos].dtype) {
+	    if (val == (DWORD)'\\') {
 		is_escaped = 1;
 		_ptr.pos++;
 		continue;
 	    }
-	    putchar((char) (tape[_ptr.pos].data & 0xFF));
-	}
+	    putchar((char) (val & 0xFF));
+	} else printf("%lu", val);
+
 	is_escaped = 0;
 	_ptr.pos++;
     }
@@ -751,12 +784,14 @@ void run()
     {
 	if (_ptr.pos > _END) {
 	    fprintf(stderr, "RUNTIME ERROR: Memory out of bounds. Address 0x%lx [%lu] does not exist", _ptr.pos, _ptr.pos);
+	    if (memdump) generate_memory_dump();
 	    exit(1);
 	}
 
 	DWORD addr = tape[_ptr.pos].data;
 	if (addr > _END) {
 	    fprintf(stderr, "RUNTIME ERROR: Memory out of bounds. Address 0x%lx [%lu] does not exist", addr, addr);
+	    if (memdump) generate_memory_dump();
 	    exit(1);
 	}
 
@@ -796,11 +831,14 @@ void run()
 	    break;
 	case I_READ:
 	    _ptr.data = tape[addr].data;
+	    _ptr.dtype = tape[addr].dtype;
 	    _ptr.pos++;
 	    break;
 	case I_WRITE:
 	    tape[addr].data = _ptr.data;
-	    if (addr >= tape[_DISP].data) tape[_DISP].data = addr + 1;
+	    tape[addr].dtype = _ptr.dtype;
+
+	    if (addr >= tape[_DISP].data && addr <= _OUT_END) tape[_DISP].data = addr + 1;
 	    _ptr.pos++;
 	    break;
 	case I_AND:
@@ -846,17 +884,10 @@ void run()
 	case I_OUT:
 	    output();
 	    break;
-	case I_STEAL:
-	    _ptr.data = tape[addr].ins;
-	    _ptr.pos++;
-	    break;
-	case I_BURN:
-	    tape[addr].ins = _ptr.data;
-	    _ptr.pos++;
-	    break;
 	case I_CALL:
 	    if (tape[_STK].data < _STACK_END) {
 		fprintf(stderr, "RUNTIME ERROR: Stack overflow occurred. Execution terminated.");
+		if (memdump) generate_memory_dump();
 		exit(1);
 	    }
 	    tape[tape[_STK].data].data = _ptr.pos + 1;
@@ -869,52 +900,10 @@ void run()
 	    break;
 	default:
 	    fprintf(stderr, "RUNTIME ERROR: Invalid instruction :: %u", tape[_ptr.pos].ins);
+	    if (memdump) generate_memory_dump();
 	    exit(1);
 	}
     }
-}
-
-// create three files displaying the entire memory contents
-void generate_memory_dump()
-{
-    // write store file
-    FILE *store_file = fopen("__STORE_DUMP.tasm.txt", "w");
-    if (store_file == NULL) {
-	fprintf(stderr, "ERROR: Failed to create store dump file");
-	exit(1);
-    }
-
-    // write line by line from store memory
-    for (DWORD i = _MEM; i <= _MEM_END; i++) {
-	fprintf(store_file, "0x%08lx [_MEM + %010lu] \t0x%08lx  0x%08lx\n", i, i - _MEM, tape[i].ins, tape[i].data);
-    }
-    fclose(store_file);
-
-    // write display file
-    FILE *display_file = fopen("__DISPLAY_DUMP.tasm.txt", "w");
-    if (store_file == NULL) {
-	fprintf(stderr, "ERROR: Failed to create display dump file");
-	exit(1);
-    }
-
-    // write line by line from display memory
-    for (DWORD i = _OUT; i <= _OUT_END; i++) {
-	fprintf(display_file, "0x%08lx [_OUT + %010lu] \t0x%08lx  0x%08lx\n", i, i - _OUT, tape[i].ins, tape[i].data);
-    }
-    fclose(display_file);
-
-    // write instruction file
-    FILE *ins_file = fopen("__INSTRUCTION_DUMP.tasm.txt", "w");
-    if (ins_file == NULL) {
-	fprintf(stderr, "ERROR: Failed to create instruction dump file");
-	exit(1);
-    }
-
-    // write line by line from instruction memory
-    for (DWORD i = _MAIN; i <= _END; i++) {
-	fprintf(ins_file, "0x%08lx [_MAIN + %010lu] \t0x%08lx  0x%08lx\n", i, i - _MAIN, tape[i].ins, tape[i].data);
-    }
-    fclose(ins_file);
 }
 
 // check the extension of a file (ext is to be passed without a dot)
@@ -932,7 +921,7 @@ void main(int argc, char** argv)
     }
 
     // flag for memory dump files to be generated after execution in complete
-    int memdump = (argc > 2 && strcmp(argv[2], "-memdump") == 0);
+    memdump = (argc > 2 && strcmp(argv[2], "-memdump") == 0);
 
     assemble_tasm(argv[1]);
     run();
