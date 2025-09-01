@@ -38,6 +38,8 @@ tasm <FILE_NAME> -memdump
 This can sometimes be helpful for debugging purposes. To see how the dump files look, you
 can go look at [memdump__powers_of_two](./examples/memdump__powers_of_two)
 
+(*NOTE:* For emacs users, I have defined a syntax highlighting mode, provided as tasm-mode.el)
+
 ## The Language (TASM)
 
 I have created a simple assembly language called TASM, that can be loaded onto the tape, and run.
